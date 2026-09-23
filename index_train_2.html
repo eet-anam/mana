@@ -499,7 +499,7 @@
           (document.fullscreenElement || document.body).appendChild(modal);
           saveState = { savecont: savecont, busy: false, failed: [] };
           svEl('sv-title').textContent = title || 'Save';
-          if (pjname && pjname !== '##2##' && !svEl('sv-name').value) svEl('sv-name').value = pjname;
+          svEl('sv-name').value = '';
           svEl('sv-status').className = 'sv-status';
           svEl('sv-status').textContent = '';
           svEl('sv-list').innerHTML = '';
