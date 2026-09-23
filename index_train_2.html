@@ -460,22 +460,36 @@
           return { savecont: sc ? sc.value : "", pjname: pn ? pn.value : "" };
       }
 
-      /* Swal.fire を包む：セーブ画面だけ専用モーダル、それ以外は従来どおりSweetAlert2へ */
+      /* Swal.fire を包む：セーブ画面だけ専用モーダル、それ以外は従来どおりSweetAlert2へ。
+         後から別のSweetAlert2が読み込まれて window.Swal が差し替えられても、必ず包み直す */
       (function(){
-          const realSwal = window.Swal;
-          const origFire = (realSwal && realSwal.fire) ? realSwal.fire.bind(realSwal) : null;
-          function fire(opts){
-              if (opts && typeof opts === 'object' && typeof opts.html === 'string' && opts.html.indexOf('id="swal-demo2"') !== -1) {
-                  const a = extractSaveArgs(opts.html);
-                  openSaveModal(opts.title, a.savecont, a.pjname);
-                  return Promise.resolve({ isDismissed: true });
-              }
-              if (origFire) return origFire.apply(null, arguments);
-              const msg = (opts && typeof opts === 'object') ? (opts.title || opts.text || "") : String(opts);
-              if (msg) alert(msg);
-              return Promise.resolve({ isDismissed: true });
+          function isSaveCall(opts){
+              return opts && typeof opts === 'object' && typeof opts.html === 'string' && opts.html.indexOf('swal-demo2') !== -1;
           }
-          if (realSwal) { realSwal.fire = fire; } else { window.Swal = { fire: fire }; }
+          function wrap(S){
+              if (!S || S.__svWrapped) return S;
+              const origFire = (typeof S.fire === 'function') ? S.fire.bind(S) : null;
+              S.fire = function(opts){
+                  if (isSaveCall(opts)) {
+                      const a = extractSaveArgs(opts.html);
+                      console.log('[save] open save modal');
+                      openSaveModal(opts.title, a.savecont, a.pjname);
+                      return Promise.resolve({ isDismissed: true });
+                  }
+                  if (origFire) return origFire.apply(null, arguments);
+                  const msg = (opts && typeof opts === 'object') ? (opts.title || opts.text || "") : String(opts);
+                  if (msg) alert(msg);
+                  return Promise.resolve({ isDismissed: true });
+              };
+              S.__svWrapped = true;
+              return S;
+          }
+          let current = wrap(window.Swal || {});
+          Object.defineProperty(window, 'Swal', {
+              configurable: true,
+              get: function(){ return current; },
+              set: function(v){ current = wrap(v); }
+          });
       })();
 
       function svEl(id){ return document.getElementById(id); }
@@ -532,6 +546,24 @@
       /* 保存ボタン */
       function saveData(){
           if (saveState.busy) return;
+
+          /* 従来のSwal+iframe画面から押された場合：iframeの入力値を引き継いで専用モーダルで保存を実行 */
+          const oldIframe = document.getElementById('swal-demo2');
+          if (svEl('sv-modal').hidden && oldIframe) {
+              console.log('[save] called from old iframe UI');
+              const d = oldIframe.contentDocument || oldIframe.contentWindow.document;
+              const oldSc = document.getElementById('savecont');
+              const sc = oldSc ? oldSc.value : "";
+              const nm = d.getElementById('PrjNameInput') ? d.getElementById('PrjNameInput').value : "";
+              const memo = d.getElementById('message') ? d.getElementById('message').value : "";
+              const loc = d.getElementById('toLocal') ? d.getElementById('toLocal').checked : false;
+              try { if (window.Swal && typeof window.Swal.close === 'function') window.Swal.close(); } catch (e) {}
+              openSaveModal('Save', sc, "");
+              svEl('sv-name').value = nm;
+              svEl('sv-memo').value = memo;
+              svEl('sv-local').checked = loc;
+          }
+          console.log('[save] start');
           const pjname = svEl('sv-name').value;
           const pjmemo = svEl('sv-memo').value;
           const savecont = saveState.savecont;
